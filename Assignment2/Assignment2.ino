@@ -10,7 +10,7 @@
     using bluetooth terminal application.   */
 Bt *bt;
 
-Mode *modes[] = { new AvoidObstacles(), new FollowCircle(), new FollowRect(), new ResetMode() };
+Mode *modes[] = { new AvoidObstacles(), new FollowCircle(), new FollowRect(70, 42), new ResetMode() };
 
 /*  Setup function is called only once at the begining of the program execution.  */
 void setup() {  

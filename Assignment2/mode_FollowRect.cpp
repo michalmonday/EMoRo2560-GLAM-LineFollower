@@ -3,6 +3,7 @@
 
 void FollowRect::Init() {
   Display::Msg("Square track", "following.");
+  Reset();
 }
 
 void FollowRect::Update() {
@@ -17,31 +18,21 @@ void FollowRect::Update() {
     So 3720ms / 70.0 * 50.0
     So 2657ms // possibly -100 or -200 for safety (to prevent turning when perpendicular line is approached)
    */
-
-
-  // init static vars at runtime
-  if (!start_time) start_time = millis();
-  if (!travel_time) {
+   
+  if (is_first_turn) {
+    start_time = millis();
+    
     float voltage = ReadPowerSupply();
-    voltage_adjustment_mult = 0.1 * (voltage - 6.6); // 0.042 because when voltage was at 8.95 then 10% speed decrease was required
-
-    travel_time = LONG_SIDE_TRAVEL_TIME - (unsigned long)((float)LONG_SIDE_TRAVEL_TIME * voltage_adjustment_mult);
-    is_near_end_threshold_time = (unsigned long)((float)travel_time / side_len * (side_len - SENSORS_OFFSET));
-
+    voltage_adjustment_mult = 0.1 * (voltage - 6.6);
     BT_SERIAL.print("time mult = "); BT_SERIAL.print(voltage_adjustment_mult); BT_SERIAL.print(", voltage = "); BT_SERIAL.print(voltage); BT_SERIAL.println("V");
-    BT_SERIAL.println("travel_time = " + String(travel_time) + ", side_len = " + String((int)side_len) + ", is_near_end_threshold_time = " + String(is_near_end_threshold_time));
+    
+    AssignEstimatedTravelTime();
   }  
 
   bool l_,c,r;
   tracker_sensor->GetAll(l_,c,r);
 
-  // not needed, delete
-  //bool orig_l = !digitalRead(IO_0);
-  //bool orig_r = !digitalRead(IO_1);
-
   int time_since_last_turn = millis() - start_time;
-  static bool is_near_end = false;
-  static bool reached_end = false; 
 
   /*  Make sound at which point the front sensor readings should be ignored.  */
   if (!is_near_end && time_since_last_turn > is_near_end_threshold_time) {
@@ -90,35 +81,78 @@ void FollowRect::Update() {
     Display::Msg("Sharp turning", "90 degrees.");
     bool was_line_encountered = drive.Turn(135 * (turn_direction == CLOCKWISE ? 1 : -1), true); // true = stop_at_line
     Display::Msg("Square track", "following.");
-    start_time = 0;
     
-    if (is_side_long) {
-      BT_SERIAL.println("orig travel time = " + String(SHORT_SIDE_TRAVEL_TIME));
-      travel_time = SHORT_SIDE_TRAVEL_TIME - (unsigned long)((float)SHORT_SIDE_TRAVEL_TIME * voltage_adjustment_mult);
-      side_len = SHORT_SIDE_LINE_LEN;
-    }
-    else {
-      BT_SERIAL.println("orig travel time = " + String(LONG_SIDE_TRAVEL_TIME));
-      travel_time = LONG_SIDE_TRAVEL_TIME - (unsigned long)((float)LONG_SIDE_TRAVEL_TIME * voltage_adjustment_mult);
-      side_len = LONG_SIDE_LINE_LEN;
-    }
+    side_len = (side_len == long_side_len ? short_side_len : long_side_len);
+    BT_SERIAL.println("side_len = " + String(side_len));
+    
+    AssignEstimatedTravelTime();
 
-    /*  Update at which point in time the car should ignore the front sensors.  */
-    is_near_end_threshold_time = (int)((float)travel_time / side_len * (side_len - SENSORS_OFFSET)) - 100;
-    BT_SERIAL.println("travel_time = " + String(travel_time) + ", side_len = " + String((int)side_len) + ", is_near_end_threshold_time = " + String(is_near_end_threshold_time));
-    
-    is_side_long = !is_side_long;
     is_first_turn = is_near_end = reached_end = false;
+    
+    start_time = millis();
   }
 }
 
-void FollowRect:: Reset() {
-  is_side_long = true;
+void FollowRect::Reset() {
   start_time = NULL;
   travel_time = NULL; 
-  LONG_SIDE_LINE_LEN;
+  side_len = long_side_len;
   is_near_end_threshold_time = NULL;
   voltage_adjustment_mult = NULL;
   turn_direction = NULL;
   is_first_turn = true;
+
+  is_near_end = false;
+  reached_end = false; 
+}
+
+
+/*  It was observed that the decrease in lenght of the line does not result in direct equivalent decrease of the time required to reach the end.  
+    For example, the optimal time to travel:
+      - 70cm took 3.5s (around 50ms per 1 cm)
+      - 42cm took 2.3s (around 54ms per 1cm) 
+
+    In order to make rough estimate of the time required to travel the distance, the code is using linear interpolation using 2 collected data points above.
+    In particular, the "map" function is used to translate the length of the track into estimated time required to travel to the end of it.
+
+    e.g. 
+    map(lenght_of_the_track_to_be_translated,   // (example scenario: the track is slightly longer, the task is to estimate how much time it will take to reach end of it using previously collected data)
+        shorter_length,                         // used in previous test
+        longer_length,                          // used in previous test
+        time_required_to_travel_shorter_length, // observed in previous test
+        time_required_to_travel_longer_length)  // observed in previous test 
+
+    map(75.0
+        42.0,
+        70.0,
+        2300.0,
+        3520.0) 
+
+    The return of such map funtion would be: 3737.
+
+    Even better approach (but more complex to implement) would be to perform more timing tests and use cubic interpolation to estimate the time.
+    It would allow for more precise estimation, which would be especially helpful when the track length is very low.
+    */
+void FollowRect::AssignEstimatedTravelTime(){
+  travel_time = map(side_len, 42, 70, 2300, 3520);
+  AdjustTravelTimeByBatteryLevel();  
+
+  /*  Update at which point in time the car should ignore the front sensors.  */
+  is_near_end_threshold_time = (int)((float)travel_time / (float)side_len * ((float)side_len - SENSORS_OFFSET)) - 100;
+
+  BT_SERIAL.println("travel_time = " + String(travel_time) + ", side_len = " + String(side_len) + ", is_near_end_threshold_time = " + String(is_near_end_threshold_time));
+}
+
+/* Equivalent of map function that works using floats.
+   Copied from: https://gist.github.com/nadavmatalon/71ccaf154bc4bd71f811289e78c65918
+   Used for mapping battery level to adjust travel distance. */
+float mapf(float val, float in_min, float in_max, float out_min, float out_max) {
+    return (val - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+}
+
+void FollowRect::AdjustTravelTimeByBatteryLevel() {
+  /*float new_travel_time = mapf(battery_level, 6.6, 8.95, 0.0, 1.0);
+  return (int)new_travel_time; 
+  */
+  travel_time -= (travel_time * voltage_adjustment_mult);
 }

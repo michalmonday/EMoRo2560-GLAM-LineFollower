@@ -68,6 +68,19 @@ void Bt::CheckProtocol(String str) {
   if (str.equals("battery_level"))
     BT_SERIAL.print("battery level = "); BT_SERIAL.print(ReadPowerSupply()); BT_SERIAL.println("V");
 
+  /*  Update line lengths used for rect track following.  */
+  if (str.startsWith("lsl=")) {
+    int len=0;
+    sscanf(str.c_str(), "lsl=%d", &len);
+    reinterpret_cast<FollowRect*>(modes[2])->SetLongSideLen(len);
+  }
+
+  if (str.startsWith("ssl=")) {
+    int len=0;
+    sscanf(str.c_str(), "ssl=%d", &len);
+    reinterpret_cast<FollowRect*>(modes[2])->SetShortSideLen(len);
+  }
+
   /*  Allows to examine the exact contents of the string by outputting its' ascii values through serial.
       This way bytes like '\n' and '\r' can be spotted.  */
   Serial.println("Protocol::Check, str consists of:");
