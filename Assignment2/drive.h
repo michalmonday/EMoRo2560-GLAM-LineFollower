@@ -8,7 +8,7 @@ private:
   int speed_;
   
   void Rebound(bool right, int size_);
-  int GetAnglesDiff(double a1, double a2);
+  
 public:
   Drive();
   void SetSpeed(int s);

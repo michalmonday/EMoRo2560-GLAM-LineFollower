@@ -35,4 +35,6 @@
    It can be done using tracker_sensor.GetAll method.  */
 #include "tracker_sensor.h"
 
+extern int GetAnglesDiff(double a1, double a2);
+
 #endif

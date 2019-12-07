@@ -10,6 +10,7 @@
     using bluetooth terminal application.   */
 Bt *bt;
 
+ /* FollowRect parameters are dimensions of the track */
 Mode *modes[] = { new AvoidObstacles(), new FollowCircle(), new FollowRect(70, 42), new ResetMode() };
 
 /*  Setup function is called only once at the begining of the program execution.  */
@@ -36,10 +37,11 @@ void setup() {
   if(!(ReadEmoroHardware() & GYR_AVAILABLE))
     Serial.println("Gyroscope is not available");
 
-  // remove it completely
+  /*  Initialize gyroscope sensor that is used for finding optimal angle when avoiding obstacles.  */ 
   Gyr.init();
-                            
-  tracker_sensor = new TrackerSensor(IO_2, IO_3, IO_4); // left, center, right
+
+  /*  Initialize the tracker_sensor by supplying pins it is connected to (respectively: left, center, right)  */
+  tracker_sensor = new TrackerSensor(IO_2, IO_3, IO_4); 
 
   /* Call 4th button behaviour (reset), which displays the menu options. */
   Mode::Set(modes[3]);

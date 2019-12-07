@@ -155,9 +155,3 @@ void Drive::TurnAbsolute_GyroBased(double angle, bool stop_at_line) {
   Stop();
   Serial.println("TurnAtAngle (return)");
 }
-
-
-int Drive::GetAnglesDiff(double a1, double a2) {
-  //https://stackoverflow.com/a/36001014
-  return 180 - (180 - (int)a1 + (int)a2) % 360;
-}

@@ -4,21 +4,16 @@
 #include <Arduino.h>
 #include "mode.h"
 
-#define SENSORS_OFFSET         20.0
+#define SENSORS_OFFSET         25.0
 
 /*  new batteries provide around 8.95V (read using float-ReadPowerSupply function)
     old batteries provide around 6.6V
     The car drives faster with new batteries.
     It was observed that a car with batteries almost running out (6.6V when checked with ReadPowerSupply)
-    drives around 10% slower than a car with new batteries (8.95VV when checked with ReadPowerSupply).  */
-#define LONG_SIDE_TRAVEL_TIME  3520 
-#define SHORT_SIDE_TRAVEL_TIME 2300
+    drives around 10% slower than a car with new batteries (8.95V when checked with ReadPowerSupply).  
+    The exact optimal timings that were observed are supplied to the "map" function in the AssignEstimatedTravelTime method. */
 
-/* ReadPowerSupply has to be read once at the begining, 
-   reading it during operation sometimes results in lower readings, 
-   it's unstable.
-
-   Setting that worked well with low battery level (6.6V) (before compensation method was implemented)
+/*   Setting these worked well with low battery level (6.6V) (before compensation method was implemented)
      #define LONG_SIDE_TRAVEL_TIME  3520
      #define SHORT_SIDE_TRAVEL_TIME 2300
 
@@ -28,7 +23,7 @@
 
 class FollowRect : public Mode {
   unsigned long start_time, travel_time, is_near_end_threshold_time;
-  float voltage_adjustment_mult;
+  float voltage_adjustment_mult, following_sharpness_div;
   bool is_near_end, reached_end, is_first_turn; 
   int side_len, long_side_len, short_side_len, turn_direction;
 
@@ -37,13 +32,15 @@ class FollowRect : public Mode {
   
 public:
 
-  FollowRect(int ldl, int sdl) : long_side_len(ldl), short_side_len(sdl) {}
+  FollowRect(int ldl, int sdl) : long_side_len(ldl), short_side_len(sdl), following_sharpness_div(2.3) {}
   void Init() override;
   void Update() override;
   void Reset() override;
 
   void SetLongSideLen(int len) { long_side_len = len; }
   void SetShortSideLen(int len) { short_side_len = len; }
+  void IncreaseFollowingSharpness();
+  void DecreaseFollowingSharpness();
 };
 
 

@@ -5,7 +5,12 @@
 
 class Mode {
   static Mode *current;
+
+protected:
+  bool presentation;
+
 public:
+  Mode() : presentation(false) {};
   static void Set(Mode *m);
   static Mode * Get() { return current; }
 

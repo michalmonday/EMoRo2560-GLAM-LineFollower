@@ -65,22 +65,34 @@ void Bt::CheckProtocol(String str) {
   }
 
   /*  Requests and sends back battery level (used for adjusting time between turns in square following function)  */
-  if (str.equals("battery_level"))
+  if (str.equals("battery_level")) {
     BT_SERIAL.print("battery level = "); BT_SERIAL.print(ReadPowerSupply()); BT_SERIAL.println("V");
-
+  }
+  
   /*  Update line lengths used for rect track following.  */
   if (str.startsWith("lsl=")) {
     int len=0;
     sscanf(str.c_str(), "lsl=%d", &len);
-    reinterpret_cast<FollowRect*>(modes[2])->SetLongSideLen(len);
+    FollowRect * fr = reinterpret_cast<FollowRect*>(modes[2]);
+    fr->SetLongSideLen(len);
   }
 
   if (str.startsWith("ssl=")) {
     int len=0;
     sscanf(str.c_str(), "ssl=%d", &len);
-    reinterpret_cast<FollowRect*>(modes[2])->SetShortSideLen(len);
+    FollowRect * fr = reinterpret_cast<FollowRect*>(modes[2]);
+    fr->SetShortSideLen(len);
   }
 
+  if (str.equals("ifs")) {
+    FollowRect * fr = reinterpret_cast<FollowRect*>(modes[2]);
+    fr->IncreaseFollowingSharpness();
+  }
+
+  if (str.equals("dfs")) {
+    FollowRect * fr = reinterpret_cast<FollowRect*>(modes[2]);
+    fr->DecreaseFollowingSharpness();
+  }
   /*  Allows to examine the exact contents of the string by outputting its' ascii values through serial.
       This way bytes like '\n' and '\r' can be spotted.  */
   Serial.println("Protocol::Check, str consists of:");

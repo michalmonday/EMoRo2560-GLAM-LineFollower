@@ -7,27 +7,18 @@ void FollowRect::Init() {
 }
 
 void FollowRect::Update() {
-
-  /*
-    Track has around 70x42cm size
-    Wheels - sensor distance is around 20cm
-
-    Travelling through 70cm side takes around 3270ms
-    Is_near_end should be true when 70cm - sensors_offset is reached.
-    So 70cm - 20cm
-    So 3720ms / 70.0 * 50.0
-    So 2657ms // possibly -100 or -200 for safety (to prevent turning when perpendicular line is approached)
-   */
-   
-  if (is_first_turn) {
-    start_time = millis();
-    
+  if (is_first_turn && !start_time) {
+    /*  ReadPowerSupply has to be read once at the begining, 
+        reading it during operation sometimes results in lower readings, 
+        it's unstable.  */
     float voltage = ReadPowerSupply();
     voltage_adjustment_mult = 0.1 * (voltage - 6.6);
     BT_SERIAL.print("time mult = "); BT_SERIAL.print(voltage_adjustment_mult); BT_SERIAL.print(", voltage = "); BT_SERIAL.print(voltage); BT_SERIAL.println("V");
-    
     AssignEstimatedTravelTime();
   }  
+
+  if (!start_time)
+    start_time = millis();
 
   bool l_,c,r;
   tracker_sensor->GetAll(l_,c,r);
@@ -53,13 +44,15 @@ void FollowRect::Update() {
   if (!l_ && c && !r || is_near_end)
     drive.Forward();
 
-  /*  Make slight corrections (left/right) but only if the car is not close to the turning spot.  */
+  /*  Make slight corrections (left/right) but only if the car is not close to the turning spot.  
+      The sharpness of the turns can be adjusted through bluetooth. 
+      Using this method it was determined that 2.3 is around optimal value for it.  */
   if (!is_near_end) {
     if (l_ && !r)
-      drive.Left();
+      drive.Left(false, false, following_sharpness_div); // params: is_sharp (should 1 of the wheels move backward), back (should the car reverse while turning), speed_decrease_divider (how sharp the turn is)
       
     if (!l_ && r)
-      drive.Right();
+      drive.Right(false, false, following_sharpness_div);
   }
 
   /*  Recognize which what to turn but only before the first turn.
@@ -86,10 +79,8 @@ void FollowRect::Update() {
     BT_SERIAL.println("side_len = " + String(side_len));
     
     AssignEstimatedTravelTime();
-
     is_first_turn = is_near_end = reached_end = false;
-    
-    start_time = millis();
+    start_time = NULL;
   }
 }
 
@@ -138,21 +129,24 @@ void FollowRect::AssignEstimatedTravelTime(){
   AdjustTravelTimeByBatteryLevel();  
 
   /*  Update at which point in time the car should ignore the front sensors.  */
-  is_near_end_threshold_time = (int)((float)travel_time / (float)side_len * ((float)side_len - SENSORS_OFFSET)) - 100;
+  is_near_end_threshold_time = (int)((float)travel_time / (float)side_len * ((float)side_len - SENSORS_OFFSET));
 
   BT_SERIAL.println("travel_time = " + String(travel_time) + ", side_len = " + String(side_len) + ", is_near_end_threshold_time = " + String(is_near_end_threshold_time));
 }
 
-/* Equivalent of map function that works using floats.
-   Copied from: https://gist.github.com/nadavmatalon/71ccaf154bc4bd71f811289e78c65918
-   Used for mapping battery level to adjust travel distance. */
-float mapf(float val, float in_min, float in_max, float out_min, float out_max) {
-    return (val - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+/*  Higher voltage results in lower estimated travel time.  */
+void FollowRect::AdjustTravelTimeByBatteryLevel() {
+  travel_time -= (travel_time * voltage_adjustment_mult);
 }
 
-void FollowRect::AdjustTravelTimeByBatteryLevel() {
-  /*float new_travel_time = mapf(battery_level, 6.6, 8.95, 0.0, 1.0);
-  return (int)new_travel_time; 
-  */
-  travel_time -= (travel_time * voltage_adjustment_mult);
+void FollowRect::IncreaseFollowingSharpness() {
+  following_sharpness_div -= 0.1;
+
+  BT_SERIAL.print("following_sharpness = "); BT_SERIAL.println(following_sharpness_div);
+}
+
+void FollowRect::DecreaseFollowingSharpness() {
+  following_sharpness_div += 0.1;
+
+  BT_SERIAL.print("following_sharpness = "); BT_SERIAL.println(following_sharpness_div);
 }

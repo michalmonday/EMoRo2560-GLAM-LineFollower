@@ -5,9 +5,11 @@
 #include "Assignment2.h"
 
 class FollowCircle : public Mode {
-  int direction;
+  int number_of_left_turns, number_of_right_turns, direction;
+
+  float GetOptimalSharpness(int dir);
 public:
-  FollowCircle() : direction(CLOCKWISE) {}
+  FollowCircle() : direction(NULL), number_of_left_turns(NULL), number_of_right_turns(NULL) {}
   
   void Init() override;
   void Update() override;

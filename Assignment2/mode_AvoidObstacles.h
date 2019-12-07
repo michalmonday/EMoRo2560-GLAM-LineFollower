@@ -5,6 +5,8 @@
 
 class AvoidObstacles : public Mode {
   double FindBestAngle();
+
+  void PlayDetectionSound();
 public:
   void Init() override;
   void Update() override;
