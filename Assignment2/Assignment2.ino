@@ -10,7 +10,7 @@
     using bluetooth terminal application.   */
 Bt *bt;
 
- /* FollowRect parameters are dimensions of the track */
+/*  FollowRect parameters are dimensions of the track  */
 Mode *modes[] = { new AvoidObstacles(), new FollowCircle(), new FollowRect(70, 42), new ResetMode() };
 
 /*  Setup function is called only once at the begining of the program execution.  */
@@ -59,8 +59,10 @@ void loop() {
   if(ReadEmoroHardware() & SW_AVAILABLE)    // if switches are available
     for (int i = 0; i < 4; ++i) 
       if (ReadSwitch(switch_id[i]))
-         Mode::Set(modes[i]);
+         /*  static Set method below sets the currently active mode.  */
+         Mode::Set(modes[i]); 
 
-  /* Each of the modes has its' own implementation of the Update function. */
+  /* Each of the modes has its' own implementation of the Update function. 
+     static Get() method below returns the currently active mode.  */
   Mode::Get()->Update();
 }
