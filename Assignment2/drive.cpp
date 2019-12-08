@@ -13,7 +13,7 @@
 Drive drive;
 
 Drive::Drive():
-  speed_(1000)
+  speed_(MAX_SPEED)
 {
   
 }
@@ -81,8 +81,7 @@ void Drive::Rebound(bool right, int size_) {
    180 deg turn takes around 940ms    
 
    Returns true if the line was found during the turn (assuming that stop_at_line argument was true, otherwise return is always false). */
-bool Drive::Turn(int deg, bool stop_at_line) {
-  static int rebound_size = 17;
+bool Drive::Turn(int deg, bool stop_at_line, int rebound_size) {
   bool is_direction_right = deg > 0;
   unsigned long delay_time = (int)((float)abs(deg) * 5.67); // 510ms / 90 degrees
   

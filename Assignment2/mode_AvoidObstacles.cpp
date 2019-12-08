@@ -7,7 +7,7 @@ void AvoidObstacles::Init() {
 }
 
 void AvoidObstacles::Update() {
-  int dist = Ultrasonic.read(GPP_0);
+
   /*
   int val = Ultrasonic.read(GPP_0);
   –Result of function:
@@ -17,14 +17,11 @@ void AvoidObstacles::Update() {
   (-2)–Error: Ultrasonic sensor is notinitialized  
   */
   
-  Serial.println("AvoidObstacles, dist = " + String(dist));
-  
   static unsigned long last_display_update = 0;
   if (millis() - last_display_update > 100) {
+    int dist = Ultrasonic.read(GPP_0);
     bool is_obstacle = dist < OBSTACLE_DISTANCE_THRESHOLD;
     Display::Msg(is_obstacle ? "obstacle detected" : "moving forward", "GPP_0 = " + String(dist));
-
-    Serial.println("AvoidObstacles, is_obstacle = " + String(is_obstacle));
     last_display_update = millis();
     
     if (is_obstacle) {

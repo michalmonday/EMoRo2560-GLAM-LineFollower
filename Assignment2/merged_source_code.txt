@@ -1,0 +1,1217 @@
+\\ Assignment2.h file
+
+#ifndef ASSIGNMENT2_H
+#define ASSIGNMENT2_H
+
+#include "mode.h"
+
+#define CLOCKWISE     1
+#define ANTI_CLOCKWISE 2
+
+extern Mode *modes[];
+
+#endif
+
+
+
+
+
+
+\\ Assignment2.ino file
+
+/*  CE243 C Programming and Embedded Systems - Assignment 2
+    Deadline date: 10/12/2019  */
+    
+#include "includes.h"
+
+/*  "bt" is a pointer to the bluetooth module object which was useful for debugging and testing.
+    Testing behaviour of the robot with the cable connected is inconvenient. 
+    Having the cable unplugged limits debugging capabilities. The Bluetooth
+    class solves that problem by providing a way to debug and interact with the program
+    using bluetooth terminal application.   */
+Bt *bt;
+
+/*  FollowRect parameters are dimensions of the track  */
+Mode *modes[] = { new AvoidObstacles(), new FollowCircle(), new FollowRect(67, 42), new ResetMode() };
+
+/*  Setup function is called only once at the begining of the program execution.  */
+void setup() {  
+  InitEmoro();   // Initializes all available inputs and outputs on EMoRo 2560.
+
+  /*  Initiate servos (used as wheels).  */
+  EmoroServo.attach(SERVO_0);      
+  EmoroServo.attach(SERVO_1);     
+
+  /*  Initiate ultrasonic sensor that will be used for obstacle avoidance by measuring distance to the object in front of the car.  */
+  Ultrasonic.attach(GPP_0);
+
+  /*  Initialize the tracker_sensor by supplying pins it is connected to (respectively: left, center, right)  */
+  tracker_sensor = new TrackerSensor(IO_2, IO_3, IO_4); 
+
+  /*  Initialize gyroscope sensor that is used for finding optimal angle when avoiding obstacles.  */ 
+  Gyr.init();
+
+  /*  Set baud rate of serial communication (allowing to use "Tools->Serial Monitor" feature of Arduino IDE to debug the code.  */
+  Serial.begin(9600);
+  
+  /* Output serial messages to diagnose problems in case of faulty sensor or incorrect wiring */
+  if(!(ReadEmoroHardware()& LCD_AVAILABLE))
+    Serial.println("LCD is not available");
+
+  if(!(ReadEmoroHardware() & SW_AVAILABLE))
+    Serial.println("Switches are not available");
+
+  if(!(ReadEmoroHardware() & GYR_AVAILABLE))
+    Serial.println("Gyroscope is not available");
+
+  /* Initialize bluetooth by setting its' name and pin. */
+  bt = new Bt("EMoRo mb19424", "3737");
+
+  /* Call 4th button behaviour (reset), which displays the menu options. */
+  Mode::Set(modes[3]);
+}  
+
+void loop() {
+  bt->Update();
+
+  /*  Declaring the array as static prevents unnecessary overwriting of memory at every iteration of the loop.
+      The array is initialized only once. It's better than using global variable because it's close to where it's used.  */
+  static int switch_id[] = { SW_1, SW_2, SW_3, SW_4 };
+  if(ReadEmoroHardware() & SW_AVAILABLE)    // if switches are available
+    for (int i = 0; i < 4; ++i) 
+      if (ReadSwitch(switch_id[i]))
+         /*  static Set method below sets the currently active mode.  */
+         Mode::Set(modes[i]); 
+
+  /* Each of the modes has its' own implementation of the Update function. 
+     static Get() method below returns the currently active mode.  */
+  Mode::Get()->Update();
+}
+
+
+
+
+
+
+\\ bluetooth.cpp file
+
+#include "includes.h"
+
+Bt::Bt(char name_[16], char pin[16], bool d)
+  : debug(d)
+{
+  if(!(ReadEmoroHardware() & BLUETOOTH_AVAILABLE)) {
+    Serial.println("Bluetooth is not available");
+  }
+  else if (Bluetooth.changeNameAndPasskey(name_, pin)) {
+      Serial.println("Failed setting bluetooth name and passkey");
+  }
+  BT_SERIAL.setTimeout(50); // default timeout is 1000ms so it would make the bt communication slow
+}
+
+void Bt::CheckProtocol(String str) { 
+  if (str.length() == 1){
+    char c = str[0];
+    switch(c){
+      /* Bunch of functions to remotely and manually control the car. Just for convenience of use.  */
+      case 's': drive.Stop();             break;
+      case 'f': drive.Forward();          break; 
+      case 'b': drive.Backward();         break;  
+      case 'l': drive.Left();             break;
+      case 'r': drive.Right();            break;
+      case 'a': drive.Left(true);         break; // sharp
+      case 'd': drive.Right(true);        break;
+      case 'z': drive.Left(false, true);  break; // back (not sharp)
+      case 'c': drive.Right(false, true); break;
+    }
+
+    /*  When number between 1 and 4 is received then call corresponding funcitonality of a switch.  */
+    if (c >= '1' && c <= '4')
+        Mode::Set(modes[c - '1']);
+  }
+
+  /*  Set the speed of the car (max 1000, it's 1000 by default)  */ 
+  if (str.startsWith("spd="))
+      drive.SetSpeed(str.substring(4).toInt());
+
+  /*  Circle track direction.  */
+  if (str.equals("cr_right"))
+    reinterpret_cast<FollowCircle*>(modes[1])->SetClockwise();
+
+  if (str.equals("cr_left"))
+    reinterpret_cast<FollowCircle*>(modes[1])->SetAntiClockwise();
+
+  /*  Turn at the specified number of deegres.
+      Positive number supplied = move to the right
+      Negative number supplied = move to the left  */
+  if (str.startsWith("a=")) {
+    int angle=0;
+    sscanf(str.c_str(), "a=%d", &angle);
+    // TurnAtAngleRelative_GyroBased(angle, false);  
+    drive.Turn(angle);
+  }
+
+  /*  Same as "a=" above but will stop once the black line is spotted under the tracker_sensor module.  */
+  if (str.startsWith("a_stop_at_line=")) {
+    int angle=0;
+    sscanf(str.c_str(), "a_stop_at_line=%d", &angle);
+    //TurnAtAngleRelative_GyroBased(angle, true);    
+    drive.Turn(angle, true);
+  }
+
+  /*  Requests and sends back battery level (used for adjusting time between turns in square following function)  */
+  if (str.equals("battery_level")) {
+    BT_SERIAL.print("battery level = "); BT_SERIAL.print(ReadPowerSupply()); BT_SERIAL.println("V");
+  }
+  
+  /*  Update line lengths used for rect track following.  */
+  if (str.startsWith("lsl=")) {
+    int len=0;
+    sscanf(str.c_str(), "lsl=%d", &len);
+    FollowRect * fr = reinterpret_cast<FollowRect*>(modes[2]);
+    fr->SetLongSideLen(len);
+  }
+
+  if (str.startsWith("ssl=")) {
+    int len=0;
+    sscanf(str.c_str(), "ssl=%d", &len);
+    FollowRect * fr = reinterpret_cast<FollowRect*>(modes[2]);
+    fr->SetShortSideLen(len);
+  }
+
+  if (str.equals("ifs")) {
+    FollowRect * fr = reinterpret_cast<FollowRect*>(modes[2]);
+    fr->IncreaseFollowingSharpness();
+  }
+
+  if (str.equals("dfs")) {
+    FollowRect * fr = reinterpret_cast<FollowRect*>(modes[2]);
+    fr->DecreaseFollowingSharpness();
+  }
+  /*  Allows to examine the exact contents of the string by outputting its' ascii values through serial.
+      This way bytes like '\n' and '\r' can be spotted.  */
+  if (debug) {
+    Serial.println("Protocol::Check, str consists of:");
+    for (int i = 0; i < str.length(); i++)
+      Serial.println(str[i],DEC);
+  }
+}
+
+
+/*  Reads the string received through bluetooth.
+    It also passes input of Serial monitor through bluetooth 
+    (used for communication testing purposes in the early development stage)  */
+void Bt::Update() {
+  if (Bluetooth.connection()) {
+    String rec;
+  
+    while (BT_SERIAL.available())
+      rec += BT_SERIAL.readString();
+  
+    if (rec.length()) {
+      rec.trim(); // removes \r\n and other leading/trailing whitespace, ref: https://www.arduino.cc/reference/en/language/variables/data-types/string/functions/trim/
+  
+      if (debug) {
+        Display::Msg(rec);
+        Serial.println("BT rec: " + rec);
+      }
+        
+      CheckProtocol(rec);
+    }
+  
+    while (Serial.available())
+      BT_SERIAL.write(Serial.read());
+  }
+}
+
+
+
+
+
+
+\\ bluetooth.h file
+
+#ifndef BLUETOOTH_H
+#define BLUETOOTH_H
+
+#define BT_SERIAL Serial1
+
+#include <Arduino.h>
+
+class Bt {
+  bool debug;
+public:
+  Bt(char name_[16], char pin[16], bool debug = false);
+  void CheckProtocol(String s);
+  void Update();
+};
+
+#endif
+
+
+
+
+
+
+\\ display.cpp file
+
+#include "display.h"
+
+namespace Display { 
+  void Msg(String msg) {
+    Lcd.clear();
+    Lcd.locate(0,0); Lcd.print(msg); 
+  }
+  
+  void Msg(String msg_row_1, String msg_row_2) {
+    Lcd.clear();
+    Lcd.locate(0,0); Lcd.print(msg_row_1); 
+    Lcd.locate(1,0); Lcd.print(msg_row_2); 
+  }
+  
+  void Msg(String top_left, String top_right, String bottom_left, String bottom_right) {
+    Lcd.clear();
+    Lcd.locate(0,0); Lcd.print(top_left); 
+    int pos = 16 - top_right.length();
+    Lcd.locate(0, pos < 8 ? 8 : pos); Lcd.print(top_right); 
+    Lcd.locate(1,0); Lcd.print(bottom_left); 
+    pos = 16 - bottom_right.length();
+    Lcd.locate(1, pos < 8 ? 8 : pos); Lcd.print(bottom_right); 
+  }
+}
+
+
+
+
+
+
+\\ display.h file
+
+#ifndef DISPLAY_H
+#define DISPLAY_H
+
+#include <Arduino.h>
+
+namespace Display {
+  extern void Msg(String msg);
+  extern void Msg(String msg_row_1, String msg_row_2);
+  extern void Msg(String top_left, String top_right, String bottom_left, String bottom_right);
+}
+
+#endif
+
+
+
+
+
+
+\\ drive.cpp file
+
+#include "includes.h"
+
+#define LEFT_WHEEL SERVO_1
+#define RIGHT_WHEEL SERVO_0
+
+#define BACKWARD  STOP - speed_
+#define STOP      1500
+#define FORWARD   STOP + speed_
+#define FIX_DIRECTION(x, y) x == LEFT_WHEEL ? y - (y - STOP)*2 : y 
+
+#define MAX_SPEED 1000
+
+Drive drive;
+
+Drive::Drive():
+  speed_(MAX_SPEED)
+{
+  
+}
+
+void Drive::SetSpeed(int s) {
+  speed_ = s;
+  if (speed_ > MAX_SPEED) speed_ = MAX_SPEED;
+  Serial.println("Speed set to = " + String(speed_));
+} 
+
+void Drive::WheelsServosWrite(int left_val, int right_val) {
+  Serial.println("WheelsServosWrite left_val = " + String(left_val) + ", right_val = " + String(right_val));
+  
+  EmoroServo.write(LEFT_WHEEL, FIX_DIRECTION(LEFT_WHEEL, left_val));    
+  EmoroServo.write(RIGHT_WHEEL, FIX_DIRECTION(RIGHT_WHEEL, right_val)); 
+}
+
+void Drive::Stop() { WheelsServosWrite(STOP, STOP); }
+void Drive::Forward() { WheelsServosWrite(FORWARD, FORWARD); }
+void Drive::Backward() { WheelsServosWrite(BACKWARD, BACKWARD); }
+
+/* The divider determines how much 1 of the wheels slows down during the turn.
+   If sharp arg is true then 1 of the wheels turns backwards. 
+   Back parameters allows for convenient control of the car using bluetooth.  */
+void Drive::Left(bool sharp, bool back, float divider) {
+  if (sharp) {
+    WheelsServosWrite(BACKWARD, FORWARD); 
+  }
+  else {
+    if (!back) WheelsServosWrite(FORWARD - speed_/divider, FORWARD); // file:///C:/Users/mb19424/Downloads/819-Article%20Text-1846-1-10-20170130.pdf
+    else WheelsServosWrite(BACKWARD + speed_/divider, BACKWARD);
+  }
+}
+
+/* Equivalent to Left function */
+void Drive::Right(bool sharp, bool back, float divider) {
+  if (sharp) {
+    WheelsServosWrite(FORWARD, BACKWARD);
+  }
+  else {
+    if (!back) WheelsServosWrite(FORWARD, FORWARD - speed_/divider); // file:///C:/Users/mb19424/Downloads/819-Article%20Text-1846-1-10-20170130.pdf
+    else WheelsServosWrite(BACKWARD, BACKWARD + speed_/divider);
+  }
+}
+
+/*  Rebound is required when the Turn function recognizes line underneath the sensor.
+    That is because the following stop of the turn happens too late.  */
+void Drive::Rebound(bool right, int size_) {
+  unsigned long start_time = millis();
+  BT_SERIAL.println("Drive::Rebound start");
+
+  Stop();
+  delay(80);
+  if (right) Turn(-size_, true);
+  else       Turn(size_, true);
+ 
+  Stop();
+  BT_SERIAL.println("Drive::Rebound took " + String(millis() - start_time) + "ms. right = " + String(right) + ", size_ = " + String(size_));
+}
+
+
+/* Designed mainly for 90deg turns using top speed, other angles may not be very accurate  
+   45 deg turn takes around 300ms
+   90 deg turn takes around 470ms (but delay of 470 is not enough, 12 turns resulted in 90 degrees discrepancy, (470 + 470/12) was tested and working properly, 510ms is used because of that)
+   180 deg turn takes around 940ms    
+
+   Returns true if the line was found during the turn (assuming that stop_at_line argument was true, otherwise return is always false). */
+bool Drive::Turn(int deg, bool stop_at_line) {
+  static int rebound_size = 17;
+  bool is_direction_right = deg > 0;
+  unsigned long delay_time = (int)((float)abs(deg) * 5.67); // 510ms / 90 degrees
+  
+  if (is_direction_right) 
+    Right(true);
+  else                    
+    Left(true);
+
+  if (stop_at_line) {
+    /*  If the turn supposed to end when black line is recognized under the sensor then
+        checks must be made during the turn, therefore "delay" function can't be used. 
+        For that reason the while loop below checks the time passed and reads the state of 
+        the front infra red sensors.  */
+    unsigned long start_time = millis();
+    while (millis() - start_time < delay_time) {
+      if (tracker_sensor->IsOnTheLine()){
+        BT_SERIAL.println("Drive::Turn - LINE FOUND");
+        Rebound(is_direction_right, rebound_size);
+        return true;
+      }
+    }
+  }
+  else {
+    /*  If stopping at line is not done then no additional actions have to be done while waiting. So simple delay is used.  */
+    delay(delay_time);
+  }
+  Stop();
+  return false;
+}
+
+/*  Inaccurate, probably need to delete it  */
+void Drive::Turn_GyroBased(double angle, bool stop_at_line) {
+  int cur_angle = (int)Gyr.readDegreesZ();
+  int end_angle = (cur_angle + (int)angle) % 360;
+  BT_SERIAL.println("Current angle = " + String(cur_angle) + ", angle provided = " + String((int)angle) + ", end angle = " + String(end_angle));
+  unsigned long start_time = millis();
+  TurnAbsolute_GyroBased((double)end_angle, stop_at_line);
+  BT_SERIAL.println(String((int)angle) + "deg. angle turn took " + String(millis() - start_time) + "ms." );
+}
+
+/*  Inaccurate, probably need to delete it  */
+void Drive::TurnAbsolute_GyroBased(double angle, bool stop_at_line) {
+  Serial.println("TurnAtAngle");
+  if (GetAnglesDiff(angle, Gyr.readDegreesZ()) > 0) {
+    Right(true);
+    while (GetAnglesDiff(angle, Gyr.readDegreesZ()) > 0) { 
+      int cur_ang = (int)Gyr.readDegreesZ();
+      BT_SERIAL.println("angle = " + String((int)angle) + ", Gyr.readDegreesZ = " + String(cur_ang) + ", GetAnglesDiff = " + String((int)GetAnglesDiff(angle, Gyr.readDegreesZ())));
+      BT_SERIAL.println(tracker_sensor->StrValues());
+      if (stop_at_line && tracker_sensor->IsOnTheLine()) {
+        Stop();
+        Display::Msg("LINE FOUND");
+        BT_SERIAL.println("LINE FOUND");
+        delay(1000);
+        break;
+      }
+    }
+  }
+  else {
+    Left(true);
+    while (GetAnglesDiff(angle, Gyr.readDegreesZ()) < 0) { 
+      if (stop_at_line && tracker_sensor->IsOnTheLine()) {
+        Stop();
+        Display::Msg("LINE FOUND");
+        delay(1000);
+        break;
+      }
+    }
+  }
+  Stop();
+  Serial.println("TurnAtAngle (return)");
+}
+
+
+
+
+
+
+\\ drive.h file
+
+#ifndef DRIVE_H
+#define DRIVE_H
+
+#include <Arduino.h>
+
+class Drive {
+private: 
+  int speed_;
+  
+  void Rebound(bool right, int size_);
+  
+public:
+  Drive();
+  void SetSpeed(int s);
+
+  void WheelsServosWrite(int left_val, int right_val);
+
+  /* Set of functions that mainly call WheelsServosWrite with correct values. */
+  void Stop();
+  void Forward();
+  void Backward();
+  void Left(bool sharp = false, bool back = false, float divider = 2.0);
+  void Right(bool sharp = false, bool back = false, float divider = 2.0);
+
+  /* Function that is different from "Left/Right" functions.
+     It waits until the turn is done, and allows to stop the turn if the line is recognized under the 3-sensors module. */
+  bool Turn(int deg, bool stop_at_line = false);
+
+  /* Gyroscope sensor is inaccurate, the Turn function (based on time estimate) is better for that. */
+  void TurnAbsolute_GyroBased(double angle, bool stop_at_line = false);
+  void Turn_GyroBased(double angle, bool stop_at_line = false);
+};
+
+/*  "Externing" the variable this way will allow to use the object in all the files that import this file.  */
+extern Drive drive;
+
+#endif
+
+
+
+
+
+
+\\ includes.cpp file
+
+#include "includes.h"
+
+int GetAnglesDiff(double a1, double a2) {
+  //https://stackoverflow.com/a/36001014
+  return 180 - (180 - (int)a1 + (int)a2) % 360;
+}
+
+
+
+
+
+
+\\ includes.h file
+
+/* This file allows to include all the necessary header files concisely using a single "#include" statement. */
+
+#ifndef INCLUDES_H
+#define INCLUDES_H
+
+#include "Assignment2.h"
+
+/* Bluetooth class allows controlling the car remotely and debugging its' state conveniently.
+   Its' use is straightforward and includes:
+   - initialization
+        Bt *bt = new Bt("EMoRo mb19424", "3737");
+   - 1 instruciton to be called in a loop
+        bt->Update();
+   - sending messages using BT_SERIAL alias of Serial1
+        BT_SERIAL.println("Some var =" + String(some_var));  */
+#include "bluetooth.h"
+
+/* Display namespace encapsulates "Msg" functions with 1,2 and 4 parameters. */
+#include "display.h"
+
+/* Drive class provides the functions to control the movement of Emoro robot. */
+#include "drive.h"
+
+/* Mode is an abstract class. Thanks to it (and the use of polymorphism), 
+   different modes can be switched in a concise way. */
+#include "mode.h"
+
+/*  Set of subclasses implementing the Mode abstract class.  */
+#include "mode_AvoidObstacles.h"
+#include "mode_FollowCircle.h"
+#include "mode_FollowRect.h"
+#include "mode_ResetMode.h"
+
+/* TrackerSensor class holds functions to get state of the 3 sensors from the following module: https://www.ebay.co.uk/itm/4Pcs-3-Way-Infrared-IR-Line-Tracking-Sensor-Module-For-Raspberry-Pi-U3/193184039763
+   It can be done using tracker_sensor.GetAll method.  */
+#include "tracker_sensor.h"
+
+extern int GetAnglesDiff(double a1, double a2);
+
+#endif
+
+
+
+
+
+
+\\ mode.cpp file
+
+#include "mode.h"
+
+Mode * Mode::current = nullptr;
+
+void Mode::Set(Mode *m) {
+  if (current)
+    current->Reset();
+
+  current = m;
+  current->Init();
+}
+
+
+
+
+
+
+\\ mode.h file
+
+#ifndef MODE_H
+#define MODE_H
+
+#include <Arduino.h>
+
+class Mode {
+  static Mode *current;
+
+protected:
+  bool presentation;
+
+public:
+  Mode() : presentation(false) {};
+  static void Set(Mode *m);
+  static Mode * Get() { return current; }
+
+  virtual void Init() = 0;
+  virtual void Update() = 0;
+  virtual void Reset() = 0;
+};
+
+#endif
+
+
+
+
+
+
+\\ mode_AvoidObstacles.cpp file
+
+#include "includes.h"
+
+#define OBSTACLE_DISTANCE_THRESHOLD 50
+
+void AvoidObstacles::Init() {
+  Display::Msg("moving forward");
+}
+
+void AvoidObstacles::Update() {
+
+  /*
+  int val = Ultrasonic.read(GPP_0);
+  –Result of function:
+  (0-399)–Sensor distancein cm
+  (400)–Sensor out of range
+  (-1) –Error: Argument „port“ out of range: [GPP_0–GPP_7]
+  (-2)–Error: Ultrasonic sensor is notinitialized  
+  */
+  
+  static unsigned long last_display_update = 0;
+  if (millis() - last_display_update > 100) {
+    int dist = Ultrasonic.read(GPP_0);
+    bool is_obstacle = dist < OBSTACLE_DISTANCE_THRESHOLD;
+    Display::Msg(is_obstacle ? "obstacle detected" : "moving forward", "GPP_0 = " + String(dist));
+    last_display_update = millis();
+    
+    if (is_obstacle) {
+      drive.Stop();
+
+      /*  Make 3 quick low sound effects to notify the usef about detected obstacle.  */
+      PlayDetectionSound();
+
+      /*  Move 360 degrees around in order to find the best angle.  */
+      double best_angle = FindBestAngle();
+      String cur_angle = String((int)Gyr.readDegreesZ());
+      
+      Display::Msg("best = ", String((int)best_angle), "current = ", cur_angle);
+      BT_SERIAL.println("Best angle = " + String((int)best_angle) + ", current angle = " + cur_angle);
+      drive.Stop();
+
+      delay(presentation ? 3000 : 100);
+      
+      int diff = GetAnglesDiff(best_angle, Gyr.readDegreesZ());
+      Display::Msg("Turning " + String(diff), "degrees");
+      BT_SERIAL.println("Turning " + String(diff) + " degrees");
+            
+      delay(presentation ? 3000 : 100);
+
+      drive.Turn(diff);
+      drive.Stop();
+    } 
+  }
+
+  drive.Forward();
+}
+
+void AvoidObstacles::Reset() {
+
+}
+
+
+/*  Turn around 360 degrees while repetitively checking ultrasonic distance sensor, trying to find optimal direction to follow.
+    (optimal direction in terms of avoiding obstacles) 
+    
+    Gyroscope sensor is used to check the current angle.  */
+double AvoidObstacles::FindBestAngle() {
+  /*  diagnostic_reading_counter increases each time the Ultrasonic sensor reading is done during the turn.
+      Low number would indicate possibly inaccurate estimation of the best angle.  */
+  int diagnostic_reading_counter = 0;
+  
+  double start_angle = Gyr.readDegreesZ();
+  double angle_where_max_dist;
+  int max_dist = 0;
+
+  BT_SERIAL.println("start_angle = " + String((int)start_angle));
+  
+  bool angle_exceeded_360 = false;
+  double new_angle, last_angle;
+  int dist;
+  drive.Right(true);
+  delay(200);
+  while ((new_angle = Gyr.readDegreesZ()) < start_angle || !angle_exceeded_360) {  
+    /*  + 10 to avoid false detection of full circle while standing still due to fluctuating sensor reading  */
+    if ((new_angle + 10.0) < last_angle) { 
+      if (last_angle < start_angle && angle_exceeded_360) {
+        break;
+      }
+      angle_exceeded_360 = true;
+    }
+
+    /* Save new largest distance position (and the distance itself) */
+    if ((dist = Ultrasonic.read(GPP_0)) > max_dist) {
+      max_dist = dist;
+      angle_where_max_dist = new_angle;
+
+      /* Make sound (with higher pitch than the one when obstacle was detected). 
+         Using sound instead of display/serial message gives better insight in this case. 
+         (because we can't look at 2 things at once and time plays big role here)  */
+      tone(BUZ_BUILTIN, 131, 50); // NOTE_C3  131
+    }
+    last_angle = new_angle;
+
+    static int last_dist = 0;
+    if (dist != last_dist || dist == 400)
+      diagnostic_reading_counter++;
+    last_dist = dist;
+  }
+  BT_SERIAL.println("angle_where_max_dist = " + String((int)angle_where_max_dist) + ", max_dist = " + String(max_dist) + ", number of distinct readings done during 360 turn = " + String(diagnostic_reading_counter));
+  return angle_where_max_dist;
+}
+
+void AvoidObstacles::PlayDetectionSound() {
+  tone(BUZ_BUILTIN, 33, 50); // NOTE_C1  33
+  delay(100);
+  tone(BUZ_BUILTIN, 33, 50); // NOTE_C1  33
+  delay(100);
+  tone(BUZ_BUILTIN, 33, 50); // NOTE_C1  33
+  delay(500);
+}
+
+
+
+
+
+
+\\ mode_AvoidObstacles.h file
+
+#ifndef AVOIDOBSTACLES_H
+#define AVOIDOBSTACLES_H
+
+#include "mode.h"
+
+class AvoidObstacles : public Mode {
+  double FindBestAngle();
+
+  void PlayDetectionSound();
+public:
+  void Init() override;
+  void Update() override;
+  void Reset() override;
+};
+
+#endif
+
+
+
+
+
+
+\\ mode_FollowCircle.cpp file
+
+#include "includes.h"
+
+#define DIR_DETECTION_TURN_THRESHOLD 2
+
+void FollowCircle::Init() { 
+  Display::Msg("Circle track", "following.");
+  drive.SetSpeed(800);
+}
+
+void FollowCircle::Update() {
+  bool l_,c,r;
+  tracker_sensor->GetAll(l_,c,r);
+
+  if (!l_ && c && !r) {
+    if (!direction) { 
+      drive.Forward();
+    }
+    else {
+      if (direction == CLOCKWISE) 
+        drive.Right(false, false, 2.0);
+      else 
+        drive.Left(false, false, 2.0);
+    }
+    
+    last_iteration_had_right_turn = false;
+    last_iteration_had_left_turn = false;
+  }
+
+  if (l_ && !r) {
+    drive.Left(false, false, direction ? GetOptimalSharpness(ANTI_CLOCKWISE) : 2.0);
+
+    if (!last_iteration_had_left_turn){
+      number_of_left_turns++;
+      last_iteration_had_left_turn = true;
+      last_iteration_had_right_turn = false;
+    }
+  }
+
+  
+  if (!l_ && r) {
+    drive.Right(false, false, direction ? GetOptimalSharpness(CLOCKWISE) : 2.0);
+
+    if (!last_iteration_had_right_turn) {
+      number_of_right_turns++;
+      last_iteration_had_right_turn = true;
+      last_iteration_had_left_turn = false;
+    }
+  }
+
+  if (!direction) {
+    if (number_of_left_turns >= DIR_DETECTION_TURN_THRESHOLD) {
+      direction = ANTI_CLOCKWISE;
+      BT_SERIAL.println("The number of left turns exceeded threshold. Anti-clockwise direction was detected.");
+      drive.SetSpeed(1000);
+    }
+
+    if (number_of_right_turns >= DIR_DETECTION_TURN_THRESHOLD) {
+      direction = CLOCKWISE;
+      BT_SERIAL.println("The number of right turns exceeded threshold. Clockwise direction was detected.");
+      drive.SetSpeed(1000);
+    }
+  }
+}
+
+void FollowCircle::Reset() {
+  number_of_left_turns = number_of_right_turns = NULL; 
+  last_iteration_had_left_turn = last_iteration_had_right_turn = false;
+  direction = NULL;
+}
+
+float FollowCircle::GetOptimalSharpness(int dir) {
+  return direction == dir ? 1.5 : 5.0;
+}
+
+
+
+
+
+
+\\ mode_FollowCircle.h file
+
+#ifndef FOLLOWCIRCLE_H
+#define FOLLOWCIRCLE_H
+
+#include "mode.h"
+#include "Assignment2.h"
+
+class FollowCircle : public Mode {
+  bool last_iteration_had_left_turn, last_iteration_had_right_turn;
+  int number_of_left_turns, number_of_right_turns, direction;
+
+  float GetOptimalSharpness(int dir);
+public:
+  FollowCircle() : direction(NULL), number_of_left_turns(NULL), number_of_right_turns(NULL), last_iteration_had_left_turn(false), last_iteration_had_right_turn(false) {}
+  
+  void Init() override;
+  void Update() override;
+  void Reset() override;
+
+  void SetClockwise() { direction = CLOCKWISE; }
+  void SetAntiClockwise() { direction = ANTI_CLOCKWISE; }
+};
+
+#endif
+
+
+
+
+
+
+\\ mode_FollowRect.cpp file
+
+#include "includes.h"
+
+
+void FollowRect::Init() {
+  Display::Msg("Square track", "following.");
+  Reset();
+}
+
+void FollowRect::Update() {
+  if (is_first_turn && !start_time) {
+    /*  ReadPowerSupply has to be read once at the begining, 
+        reading it during operation sometimes results in lower readings, 
+        it's unstable.  */
+    float voltage = ReadPowerSupply();
+    voltage_adjustment_mult = 0.1 * (voltage - 6.6);
+    BT_SERIAL.print("time mult = "); BT_SERIAL.print(voltage_adjustment_mult); BT_SERIAL.print(", voltage = "); BT_SERIAL.print(voltage); BT_SERIAL.println("V");
+    AssignEstimatedTravelTime();
+  }  
+
+  if (!start_time)
+    start_time = millis();
+
+  bool l_,c,r;
+  tracker_sensor->GetAll(l_,c,r);
+
+  int time_since_last_turn = millis() - start_time;
+
+  /*  Make sound at which point the front sensor readings should be ignored.  */
+  if (!is_near_end && time_since_last_turn > is_near_end_threshold_time) {
+    /*  262 is NOTE_C4 in the pitches.h file from toneMelody example provided by Emoro library  */
+    tone(BUZ_BUILTIN, 262, 300); 
+    is_near_end = true;
+  }
+
+  /*  Make another sound using higher pitch when its time to turn.  */
+  if (!reached_end && time_since_last_turn > travel_time) {
+    /*  523 is NOTE_C5 in the pitches.h file from toneMelody example provided by Emoro library  */
+    tone(BUZ_BUILTIN, 523, 300); 
+    reached_end = true;
+  }   
+
+  /*  Drive forward if the sensor shows correct position over the line.
+      If the car is close to the turning spot, then blindly go forward until that spot is reached.  */
+  if (!l_ && c && !r || is_near_end)
+    drive.Forward();
+
+  /*  Make slight corrections (left/right) but only if the car is not close to the turning spot.  
+      The sharpness of the turns can be adjusted through bluetooth. 
+      Using this method it was determined that 2.3 is around optimal value for it.  */
+  if (!is_near_end) {
+    if (l_ && !r)
+      drive.Left(false, false, following_sharpness_div); // params: is_sharp (should 1 of the wheels move backward), back (should the car reverse while turning), speed_decrease_divider (how sharp the turn is)
+      
+    if (!l_ && r)
+      drive.Right(false, false, following_sharpness_div);
+  }
+
+  /*  Recognize which what to turn but only before the first turn.
+      Rarely (1 in around 20 turns) this is misrecognized so that's why it's done only once. */
+  if (is_near_end && is_first_turn) {
+    if (l_ && c && !r)
+      turn_direction = ANTI_CLOCKWISE;
+
+    if (!l_ && c && r)
+      turn_direction = CLOCKWISE;
+  }
+
+  /*  If the car reached the turning spot then turn and update the information about next turning spot.
+      It also sends diagnostic information through bluetooth, allowing the method to be adjusted.
+      This debugging method allowed to adjust time calculation due to battery voltage level.
+      (which results in higher speed of the car, that is a factor that is currently taken into consideration by the code).  */
+  if (reached_end) {
+    drive.Stop();
+    Display::Msg("Sharp turning", "90 degrees.");
+    bool was_line_encountered = drive.Turn(135 * (turn_direction == CLOCKWISE ? 1 : -1), true); // true = stop_at_line
+    Display::Msg("Square track", "following.");
+    
+    side_len = (side_len == long_side_len ? short_side_len : long_side_len);
+    BT_SERIAL.println("side_len = " + String(side_len));
+    
+    AssignEstimatedTravelTime();
+    is_first_turn = is_near_end = reached_end = false;
+    start_time = NULL;
+  }
+}
+
+void FollowRect::Reset() {
+  start_time = NULL;
+  travel_time = NULL; 
+  side_len = long_side_len;
+  is_near_end_threshold_time = NULL;
+  voltage_adjustment_mult = NULL;
+  turn_direction = NULL;
+  is_first_turn = true;
+
+  is_near_end = false;
+  reached_end = false;
+  
+  following_sharpness_div = 2.0; 
+  following_sharpness_div += voltage_adjustment_mult;
+}
+
+
+/*  It was observed that the decrease in lenght of the line does not result in direct equivalent decrease of the time required to reach the end.  
+    For example, the optimal time to travel:
+      - 70cm took 3.5s (around 50ms per 1 cm)
+      - 42cm took 2.3s (around 54ms per 1cm) 
+
+    In order to make rough estimate of the time required to travel the distance, the code is using linear interpolation using 2 collected data points above.
+    In particular, the "map" function is used to translate the length of the track into estimated time required to travel to the end of it.
+
+    e.g. 
+    map(lenght_of_the_track_to_be_translated,   // (example scenario: the track is slightly longer, the task is to estimate how much time it will take to reach end of it using previously collected data)
+        shorter_length,                         // used in previous test
+        longer_length,                          // used in previous test
+        time_required_to_travel_shorter_length, // observed in previous test
+        time_required_to_travel_longer_length)  // observed in previous test 
+
+    map(75.0
+        42.0,
+        70.0,
+        2300.0,
+        3520.0) 
+
+    The return of such map funtion would be: 3737.
+
+    Even better approach (but more complex to implement) would be to perform more timing tests and use cubic interpolation to estimate the time.
+    It would allow for more precise estimation, which would be especially helpful when the track length is very low.
+    */
+void FollowRect::AssignEstimatedTravelTime(){
+  travel_time = map(side_len, 42, 70, 2300, 3520);
+  AdjustTravelTimeByBatteryLevel();  
+
+  /*  Update at which point in time the car should ignore the front sensors.  */
+  is_near_end_threshold_time = (int)((float)travel_time / (float)side_len * ((float)side_len - SENSORS_OFFSET));
+
+  BT_SERIAL.println("travel_time = " + String(travel_time) + ", side_len = " + String(side_len) + ", is_near_end_threshold_time = " + String(is_near_end_threshold_time));
+}
+
+/*  Higher voltage results in lower estimated travel time.  */
+void FollowRect::AdjustTravelTimeByBatteryLevel() {
+  travel_time -= (travel_time * voltage_adjustment_mult);
+}
+
+void FollowRect::IncreaseFollowingSharpness() {
+  following_sharpness_div -= 0.1;
+
+  BT_SERIAL.print("following_sharpness = "); BT_SERIAL.println(following_sharpness_div);
+}
+
+void FollowRect::DecreaseFollowingSharpness() {
+  following_sharpness_div += 0.1;
+
+  BT_SERIAL.print("following_sharpness = "); BT_SERIAL.println(following_sharpness_div);
+}
+
+
+
+
+
+
+\\ mode_FollowRect.h file
+
+#ifndef FOLLOWRECT_H
+#define FOLLOWRECT_H
+
+#include <Arduino.h>
+#include "mode.h"
+
+#define SENSORS_OFFSET         25.0
+
+/*  new batteries provide around 8.95V (read using float-ReadPowerSupply function)
+    old batteries provide around 6.6V
+    The car drives faster with new batteries.
+    It was observed that a car with batteries almost running out (6.6V when checked with ReadPowerSupply)
+    drives around 10% slower than a car with new batteries (8.95V when checked with ReadPowerSupply).  
+    The exact optimal timings that were observed are supplied to the "map" function in the AssignEstimatedTravelTime method. */
+
+/*   Setting these worked well with low battery level (6.6V) (before compensation method was implemented)
+     #define LONG_SIDE_TRAVEL_TIME  3520
+     #define SHORT_SIDE_TRAVEL_TIME 2300
+
+   Setting that worked well with high battery level (8.95V) (before compensation method was implemented)
+     #define LONG_SIDE_TRAVEL_TIME  3168 // decreased by %10
+     #define SHORT_SIDE_TRAVEL_TIME 2070      */
+
+class FollowRect : public Mode {
+  unsigned long start_time, travel_time, is_near_end_threshold_time;
+  float voltage_adjustment_mult, following_sharpness_div;
+  bool is_near_end, reached_end, is_first_turn; 
+  int side_len, long_side_len, short_side_len, turn_direction;
+
+  void AssignEstimatedTravelTime(); 
+  void AdjustTravelTimeByBatteryLevel();
+  
+public:
+
+  FollowRect(int ldl, int sdl) : long_side_len(ldl), short_side_len(sdl) {}
+  void Init() override;
+  void Update() override;
+  void Reset() override;
+
+  void SetLongSideLen(int len) { long_side_len = len; }
+  void SetShortSideLen(int len) { short_side_len = len; }
+  void IncreaseFollowingSharpness();
+  void DecreaseFollowingSharpness();
+};
+
+
+
+#endif
+
+
+
+
+
+
+\\ mode_ResetMode.cpp file
+
+#include "includes.h"
+
+void ResetMode::Init() {
+  drive.Stop();
+  Display::Msg("1.Obst", "2.Circle", "3.Square", "4.Reset");
+}
+
+void ResetMode::Update() {}
+void ResetMode::Reset() {}
+
+
+
+
+
+
+\\ mode_ResetMode.h file
+
+#ifndef RESETMODE_H
+#define RESETMODE_H
+
+#include "mode.h"
+
+class ResetMode : public Mode {
+public:
+  void Init() override;
+  void Update() override;
+  void Reset() override;
+};
+
+#endif
+
+
+
+
+
+
+\\ tracker_sensor.cpp file
+
+#include "tracker_sensor.h"
+
+TrackerSensor *tracker_sensor;
+
+TrackerSensor::TrackerSensor(int l, int c, int r)
+  : left_pin(l), center_pin(c), right_pin(r)
+{ 
+  pinMode(l, INPUT_PULLUP);  // left                                 
+  pinMode(c, INPUT_PULLUP);  // center
+  pinMode(r, INPUT_PULLUP);  // right  
+}
+
+/*  Read all 3 sensors from the board. Arguments passed by reference work similar to pointers in plain C.
+    It allows setting 3 "return values" at once. */
+void TrackerSensor::GetAll(bool &l, bool &c, bool &r) {
+  l = !digitalRead(left_pin); 
+  c = !digitalRead(center_pin); 
+  r = !digitalRead(right_pin);
+}
+
+/*  Function that allows convenient printing of sensor state. Useful for debugging.  */
+String TrackerSensor::StrValues() {
+  bool l_,c,r;   GetAll(l_,c,r);
+  return "tracker_sensor = " + String(l_) + " " + String(c) + " " + String(r);
+}
+
+/*  Check if the front sensor is directly over the line.  */
+bool TrackerSensor::IsOnTheLine() {
+  bool l_,c,r;    GetAll(l_,c,r);
+  return (!l_ && c && !r);
+}
+
+
+
+
+
+
+\\ tracker_sensor.h file
+
+#ifndef TRACKERSENSOR_H
+#define TRACKERSENSOR_H
+
+#include <Arduino.h>
+
+class TrackerSensor {
+  int left_pin;
+  int center_pin;
+  int right_pin;
+
+public:
+  TrackerSensor(int l_pin, int c_pin, int r_pin);  
+
+  void GetAll(bool &l_state, bool &c_state, bool &r_state); 
+  bool IsOnTheLine();
+  String StrValues();
+};
+
+/*  "Externing" the variable this way will allow to use the object in all the files that import this file.  */
+extern TrackerSensor *tracker_sensor;
+
+#endif
+
+
+
+
+
+

@@ -23,24 +23,30 @@
 
 class FollowRect : public Mode {
   unsigned long start_time, travel_time, is_near_end_threshold_time;
-  float voltage_adjustment_mult, following_sharpness_div;
+  float voltage_adjustment_mult, following_sharpness_div, power_supply_significance;
   bool is_near_end, reached_end, is_first_turn; 
-  int side_len, long_side_len, short_side_len, turn_direction;
+  int side_len, long_side_len, short_side_len, turn_direction, rebound_size;
 
   void AssignEstimatedTravelTime(); 
   void AdjustTravelTimeByBatteryLevel();
   
 public:
 
-  FollowRect(int ldl, int sdl) : long_side_len(ldl), short_side_len(sdl), following_sharpness_div(2.3) {}
+  FollowRect(int ldl, int sdl) : long_side_len(ldl), short_side_len(sdl), rebound_size(24), power_supply_significance(0.30) {}
   void Init() override;
   void Update() override;
   void Reset() override;
 
-  void SetLongSideLen(int len) { long_side_len = len; }
-  void SetShortSideLen(int len) { short_side_len = len; }
+  void SetLongSideLen(int len);
+  void SetShortSideLen(int len);
   void IncreaseFollowingSharpness();
   void DecreaseFollowingSharpness();
+  void IncreaseReboundSize(); 
+  void DecreaseReboundSize();
+  void IncreasePowerSupplySignificance();
+  void DecreasePowerSupplySignificance();
+
+  void OutputAllSettings();
 };
 
 

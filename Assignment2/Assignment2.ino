@@ -11,7 +11,7 @@
 Bt *bt;
 
 /*  FollowRect parameters are dimensions of the track  */
-Mode *modes[] = { new AvoidObstacles(), new FollowCircle(), new FollowRect(70, 42), new ResetMode() };
+Mode *modes[] = { new AvoidObstacles(), new FollowCircle(), new FollowRect(67, 42), new ResetMode() };
 
 /*  Setup function is called only once at the begining of the program execution.  */
 void setup() {  
@@ -23,6 +23,12 @@ void setup() {
 
   /*  Initiate ultrasonic sensor that will be used for obstacle avoidance by measuring distance to the object in front of the car.  */
   Ultrasonic.attach(GPP_0);
+
+  /*  Initialize the tracker_sensor by supplying pins it is connected to (respectively: left, center, right)  */
+  tracker_sensor = new TrackerSensor(IO_2, IO_3, IO_4); 
+
+  /*  Initialize gyroscope sensor that is used for finding optimal angle when avoiding obstacles.  */ 
+  Gyr.init();
 
   /*  Set baud rate of serial communication (allowing to use "Tools->Serial Monitor" feature of Arduino IDE to debug the code.  */
   Serial.begin(9600);
@@ -37,17 +43,11 @@ void setup() {
   if(!(ReadEmoroHardware() & GYR_AVAILABLE))
     Serial.println("Gyroscope is not available");
 
-  /*  Initialize gyroscope sensor that is used for finding optimal angle when avoiding obstacles.  */ 
-  Gyr.init();
-
-  /*  Initialize the tracker_sensor by supplying pins it is connected to (respectively: left, center, right)  */
-  tracker_sensor = new TrackerSensor(IO_2, IO_3, IO_4); 
+  /* Initialize bluetooth by setting its' name and pin. */
+  bt = new Bt("EMoRo mb19424", "3737");
 
   /* Call 4th button behaviour (reset), which displays the menu options. */
   Mode::Set(modes[3]);
-
-  /* Initialize bluetooth by setting its' name and pin. */
-  bt = new Bt("EMoRo mb19424", "3737");
 }  
 
 void loop() {

@@ -4,25 +4,22 @@
 
 void FollowCircle::Init() { 
   Display::Msg("Circle track", "following.");
-  drive.SetSpeed(300);
+  drive.SetSpeed(800);
 }
 
 void FollowCircle::Update() {
   bool l_,c,r;
   tracker_sensor->GetAll(l_,c,r);
 
-  Serial.println(String(l_) +","+ String(c) +","+ String(r));
   if (!l_ && c && !r) {
-    if (!direction) {
+    if (!direction) { 
       drive.Forward();
     }
     else {
-      if (direction == CLOCKWISE) {
+      if (direction == CLOCKWISE) 
         drive.Right(false, false, 2.0);
-      }
-      else {
+      else 
         drive.Left(false, false, 2.0);
-      }
     }
     
     last_iteration_had_right_turn = false;

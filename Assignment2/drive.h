@@ -24,7 +24,7 @@ public:
 
   /* Function that is different from "Left/Right" functions.
      It waits until the turn is done, and allows to stop the turn if the line is recognized under the 3-sensors module. */
-  bool Turn(int deg, bool stop_at_line = false);
+  bool Turn(int deg, bool stop_at_line = false, int rebound_size = 20);
 
   /* Gyroscope sensor is inaccurate, the Turn function (based on time estimate) is better for that. */
   void TurnAbsolute_GyroBased(double angle, bool stop_at_line = false);

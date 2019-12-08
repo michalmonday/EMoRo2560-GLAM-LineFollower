@@ -13,8 +13,6 @@ Bt::Bt(char name_[16], char pin[16], bool d)
 }
 
 void Bt::CheckProtocol(String str) { 
-
-  
   if (str.length() == 1){
     char c = str[0];
     switch(c){
@@ -39,13 +37,6 @@ void Bt::CheckProtocol(String str) {
   if (str.startsWith("spd="))
       drive.SetSpeed(str.substring(4).toInt());
 
-  /*  Circle track direction.  */
-  if (str.equals("cr_right"))
-    reinterpret_cast<FollowCircle*>(modes[1])->SetClockwise();
-
-  if (str.equals("cr_left"))
-    reinterpret_cast<FollowCircle*>(modes[1])->SetAntiClockwise();
-
   /*  Turn at the specified number of deegres.
       Positive number supplied = move to the right
       Negative number supplied = move to the left  */
@@ -69,7 +60,7 @@ void Bt::CheckProtocol(String str) {
     BT_SERIAL.print("battery level = "); BT_SERIAL.print(ReadPowerSupply()); BT_SERIAL.println("V");
   }
   
-  /*  Update line lengths used for rect track following.  */
+  /*  Update line lengths - used for rect track following.  */
   if (str.startsWith("lsl=")) {
     int len=0;
     sscanf(str.c_str(), "lsl=%d", &len);
@@ -84,6 +75,7 @@ void Bt::CheckProtocol(String str) {
     fr->SetShortSideLen(len);
   }
 
+  /*  Increase following sharpness - used for rect track following. */
   if (str.equals("ifs")) {
     FollowRect * fr = reinterpret_cast<FollowRect*>(modes[2]);
     fr->IncreaseFollowingSharpness();
@@ -93,11 +85,45 @@ void Bt::CheckProtocol(String str) {
     FollowRect * fr = reinterpret_cast<FollowRect*>(modes[2]);
     fr->DecreaseFollowingSharpness();
   }
+
+  /*  Increase rebound size - used for rect track following. */
+  if (str.equals("irs")) {
+    FollowRect * fr = reinterpret_cast<FollowRect*>(modes[2]);
+    fr->IncreaseReboundSize();
+  }
+
+  /*  Decrease rebound size - used for rect track following. */
+  if (str.equals("drs")) {
+    FollowRect * fr = reinterpret_cast<FollowRect*>(modes[2]);
+    fr->DecreaseReboundSize();
+  }
+
+  /*  Increase power supply significance - used for rect track following. */
+  if (str.equals("ipss")) {
+    FollowRect * fr = reinterpret_cast<FollowRect*>(modes[2]);
+    fr->IncreasePowerSupplySignificance();
+  }
+
+  /*  Increase power supply significance - used for rect track following. */
+  if (str.equals("dpss")) {
+    FollowRect * fr = reinterpret_cast<FollowRect*>(modes[2]);
+    fr->DecreasePowerSupplySignificance();
+  }
+
+  /*  Outputs all settings - used for rect track following. */
+  if (str.equals("out_set")) {
+    FollowRect * fr = reinterpret_cast<FollowRect*>(modes[2]);
+    fr->OutputAllSettings();
+  }
+  
+  
   /*  Allows to examine the exact contents of the string by outputting its' ascii values through serial.
       This way bytes like '\n' and '\r' can be spotted.  */
-  Serial.println("Protocol::Check, str consists of:");
-  for (int i = 0; i < str.length(); i++)
-    Serial.println(str[i],DEC);
+  if (debug) {
+    Serial.println("Protocol::Check, str consists of:");
+    for (int i = 0; i < str.length(); i++)
+      Serial.println(str[i],DEC);
+  }
 }
 
 
@@ -114,11 +140,12 @@ void Bt::Update() {
     if (rec.length()) {
       rec.trim(); // removes \r\n and other leading/trailing whitespace, ref: https://www.arduino.cc/reference/en/language/variables/data-types/string/functions/trim/
   
-      if (debug)
+      if (debug) {
         Display::Msg(rec);
+        Serial.println("BT rec: " + rec);
+      }
         
       CheckProtocol(rec);
-      Serial.println("BT rec: " + rec);
     }
   
     while (Serial.available())

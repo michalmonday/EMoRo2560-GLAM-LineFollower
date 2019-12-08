@@ -9,3 +9,5 @@ void Mode::Set(Mode *m) {
   current = m;
   current->Init();
 }
+
+
