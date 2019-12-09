@@ -3,6 +3,7 @@
 
 void FollowRect::Init() {
   Display::Msg("Square track", "following.");
+  BT_SERIAL.print("Battery level at the begining of rect run = "); BT_SERIAL.print(ReadPowerSupply()); BT_SERIAL.println("V");
   Reset();
 }
 
@@ -83,8 +84,11 @@ void FollowRect::Update() {
     AssignEstimatedTravelTime();
     is_first_turn = is_near_end = reached_end = false;
     start_time = NULL;
+
+
   }
 }
+
 
 void FollowRect::Reset() {
   start_time = NULL;
@@ -194,3 +198,5 @@ void FollowRect::OutputAllSettings() {
   BT_SERIAL.print("power_supply_significance = "); BT_SERIAL.println(power_supply_significance);
   BT_SERIAL.println("------------");
 }
+
+//

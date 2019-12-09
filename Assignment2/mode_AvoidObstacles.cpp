@@ -109,7 +109,10 @@ double AvoidObstacles::FindBestAngle() {
   return angle_where_max_dist;
 }
 
+
 void AvoidObstacles::PlayDetectionSound() {
+  /*  NOTE_C1 reference:
+      https://github.com/inovatic-ict/emoro-2560-library/blob/master/examples/02.%20Digital/toneMelody/pitches.h   */
   tone(BUZ_BUILTIN, 33, 50); // NOTE_C1  33
   delay(100);
   tone(BUZ_BUILTIN, 33, 50); // NOTE_C1  33

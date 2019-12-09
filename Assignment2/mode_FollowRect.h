@@ -32,7 +32,7 @@ class FollowRect : public Mode {
   
 public:
 
-  FollowRect(int ldl, int sdl) : long_side_len(ldl), short_side_len(sdl), rebound_size(24), power_supply_significance(0.30) {}
+  FollowRect(int ldl, int sdl) : long_side_len(ldl), short_side_len(sdl), rebound_size(24), power_supply_significance(0.12) {}
   void Init() override;
   void Update() override;
   void Reset() override;

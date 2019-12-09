@@ -11,7 +11,7 @@
 Bt *bt;
 
 /*  FollowRect parameters are dimensions of the track  */
-Mode *modes[] = { new AvoidObstacles(), new FollowCircle(), new FollowRect(67, 42), new ResetMode() };
+Mode *modes[] = { new AvoidObstacles(), new FollowCircle(), new FollowRect(70, 42), new ResetMode() };
 
 /*  Setup function is called only once at the begining of the program execution.  */
 void setup() {  

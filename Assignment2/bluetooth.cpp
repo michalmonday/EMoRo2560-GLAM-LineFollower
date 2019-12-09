@@ -59,6 +59,17 @@ void Bt::CheckProtocol(String str) {
   if (str.equals("battery_level")) {
     BT_SERIAL.print("battery level = "); BT_SERIAL.print(ReadPowerSupply()); BT_SERIAL.println("V");
   }
+
+  /*  Output direction - used for circle track following.  */
+  if (str.startsWith("cr_dir"))
+    reinterpret_cast<FollowCircle*>(modes[1])->OutputDirection();
+
+  /*  Circle track direction.  */  
+  if (str.equals("cr_right")) 
+    reinterpret_cast<FollowCircle*>(modes[1])->SetClockwise();  
+  
+  if (str.equals("cr_left"))  
+    reinterpret_cast<FollowCircle*>(modes[1])->SetAntiClockwise();
   
   /*  Update line lengths - used for rect track following.  */
   if (str.startsWith("lsl=")) {
