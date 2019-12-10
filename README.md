@@ -11,3 +11,7 @@ If you're making a project based on EMoRo2560 robot (using GLAM module) then the
 * bluetooth.cpp / .h    
 * drive.cpp / .h  
 * display.cpp / .h  
+
+# Presentation
+[Circle track youtube video](https://www.youtube.com/watch?v=v3Pxr6xNrCc)  
+[Square track youtube video](https://www.youtube.com/watch?v=g9IysSXK3gY)  

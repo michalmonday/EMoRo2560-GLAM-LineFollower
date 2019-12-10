@@ -38,7 +38,7 @@ void FollowRect::Update() {
   if (!reached_end && time_since_last_turn > travel_time) {
     /*  523 is NOTE_C5 in the pitches.h file from toneMelody example provided by Emoro library  
         131 is NOTE_C3  */
-    tone(BUZ_BUILTIN, 131, 200); 
+    BT_SERIAL.println("original reached_end = true");
     reached_end = true;
   }   
 
@@ -56,15 +56,21 @@ void FollowRect::Update() {
       
     if (!l_ && r)
       drive.Right(false, false, following_sharpness_div);
+  } else {
+    if (!l_ && !c && !r && turn_direction) {
+      BT_SERIAL.println("all white reached_end = true");
+      tone(BUZ_BUILTIN, 131, 200); 
+      reached_end = true;
+    }
   }
 
   /*  Recognize which what to turn but only before the first turn.
       Rarely (1 in around 20 turns) this is misrecognized so that's why it's done only once. */
   if (is_near_end && is_first_turn) {
-    if (l_ && c && !r)
+    if (l_)
       turn_direction = ANTI_CLOCKWISE;
-
-    if (!l_ && c && r)
+      
+    if (r)
       turn_direction = CLOCKWISE;
   }
 
@@ -72,7 +78,8 @@ void FollowRect::Update() {
       It also sends diagnostic information through bluetooth, allowing the method to be adjusted.
       This debugging method allowed to adjust time calculation due to battery voltage level.
       (which results in higher speed of the car, that is a factor that is currently taken into consideration by the code).  */
-  if (reached_end) {
+  
+  /*if (reached_end) {
     drive.Stop();
     Display::Msg("Sharp turning", "90 degrees.");
     bool was_line_encountered = drive.Turn(135 * (turn_direction == CLOCKWISE ? 1 : -1), true, rebound_size); // true = stop_at_line
@@ -84,8 +91,41 @@ void FollowRect::Update() {
     AssignEstimatedTravelTime();
     is_first_turn = is_near_end = reached_end = false;
     start_time = NULL;
+  }
+  */
 
+  if (reached_end) {
 
+    Display::Msg("Sharp turning", "90 degrees.");
+    //bool was_line_encountered = drive.Turn(135 * (turn_direction == CLOCKWISE ? 1 : -1), true, rebound_size); // true = stop_at_line
+
+    delay(400);
+    if (turn_direction == CLOCKWISE) {
+      drive.Right(false, false, 1.0);
+      BT_SERIAL.println("ALL WHITE - turn right");
+    }
+    else {
+      drive.Left(false, false, 1.0);
+      BT_SERIAL.println("ALL WHITE - turn left");
+    }
+
+    static unsigned long minimum_turning_time = 700;
+    unsigned long turning_start_time = millis();
+    while ((!c && !l_ && !r) || (millis() - turning_start_time < minimum_turning_time)) {
+      tracker_sensor->GetAll(l_, c, r);
+    }
+    tone(BUZ_BUILTIN, 200, 200); 
+    
+    
+    
+    Display::Msg("Square track", "following.");
+    
+    side_len = (side_len == long_side_len ? short_side_len : long_side_len);
+    BT_SERIAL.println("side_len = " + String(side_len));
+    
+    AssignEstimatedTravelTime();
+    is_first_turn = is_near_end = reached_end = false;
+    start_time = NULL;
   }
 }
 

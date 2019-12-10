@@ -56,7 +56,7 @@ void loop() {
   /*  Declaring the array as static prevents unnecessary overwriting of memory at every iteration of the loop.
       The array is initialized only once. It's better than using global variable because it's close to where it's used.  */
   static int switch_id[] = { SW_1, SW_2, SW_3, SW_4 };
-  if(ReadEmoroHardware() & SW_AVAILABLE)    // if switches are available
+  //if(ReadEmoroHardware() & SW_AVAILABLE)    // if switches are available
     for (int i = 0; i < 4; ++i) 
       if (ReadSwitch(switch_id[i]))
          /*  static Set method below sets the currently active mode.  */

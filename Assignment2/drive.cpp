@@ -97,7 +97,11 @@ bool Drive::Turn(int deg, bool stop_at_line, int rebound_size) {
         the front infra red sensors.  */
     unsigned long start_time = millis();
     while (millis() - start_time < delay_time) {
-      if (tracker_sensor->IsOnTheLine()){
+      
+      bool l_,c,r;
+      tracker_sensor->GetAll(l_,c,r);
+      if (l_ || c || r) {
+      //if (tracker_sensor->IsOnTheLine()){
         BT_SERIAL.println("Drive::Turn - LINE FOUND");
         Rebound(is_direction_right, rebound_size);
         return true;
