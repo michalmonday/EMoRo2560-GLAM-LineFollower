@@ -89,13 +89,13 @@ void FollowCircle::Update() {
 
 float FollowCircle::SmoothenSharpness(float s) {
   long delta = millis() - last_turn_change_time;
-  if (delta >= 100) {
+  if (delta >= smoothing_period) {
     BT_SERIAL.print("(" + String(millis()) + " - " + String(last_turn_change_time) + "ms) "); BT_SERIAL.print("using orig = ");  BT_SERIAL.println(s);
     return s;
   }
 
   float s_diff = prev_turn_sharpness - s;
-  float sharpness_to_add = (100.0 - (float)delta) / 100.0 * s_diff;
+  float sharpness_to_add = ((float)smoothing_period - (float)delta) / (float)smoothing_period * s_diff;
 
   BT_SERIAL.print("(" + String(millis()) + " - " + String(last_turn_change_time) + "ms) "); BT_SERIAL.print("orig = "); BT_SERIAL.print(s); BT_SERIAL.print(", adjusted = "); BT_SERIAL.println(s + sharpness_to_add);
   return s + sharpness_to_add;
@@ -166,4 +166,15 @@ void FollowCircle::DirectionFoundSoundEffect() {
 
   // C2
   tone(BUZ_BUILTIN, 65, 200);
+}
+
+
+void FollowCircle::IncreaseSmoothness() {
+  smoothing_period += 10;
+  BT_SERIAL.println("smoothing_period = " + String(smoothing_period) + "ms");
+}
+
+void FollowCircle::DecreaseSmoothness() {
+  smoothing_period -= 10;
+  BT_SERIAL.println("smoothing_period = " + String(smoothing_period) + "ms");
 }

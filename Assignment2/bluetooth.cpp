@@ -70,6 +70,14 @@ void Bt::CheckProtocol(String str) {
   
   if (str.equals("cr_left"))  
     reinterpret_cast<FollowCircle*>(modes[1])->SetAntiClockwise();
+
+  /*  Increase smoothness - used for rect track following. */
+  if (str.equals("is"))
+    reinterpret_cast<FollowCircle*>(modes[1])->IncreaseSmoothness();
+
+  /*  Decrease smoothness - used for rect track following. */
+  if (str.equals("ds"))
+    reinterpret_cast<FollowCircle*>(modes[1])->DecreaseSmoothness();
   
   /*  Update line lengths - used for rect track following.  */
   if (str.startsWith("lsl=")) {
@@ -119,14 +127,7 @@ void Bt::CheckProtocol(String str) {
   if (str.equals("dpss")) {
     FollowRect * fr = reinterpret_cast<FollowRect*>(modes[2]);
     fr->DecreasePowerSupplySignificance();
-  }
-
-  /*  Outputs all settings - used for rect track following. */
-  if (str.equals("out_set")) {
-    FollowRect * fr = reinterpret_cast<FollowRect*>(modes[2]);
-    fr->OutputAllSettings();
-  }
-  
+  } 
   
   /*  Allows to examine the exact contents of the string by outputting its' ascii values through serial.
       This way bytes like '\n' and '\r' can be spotted.  */
