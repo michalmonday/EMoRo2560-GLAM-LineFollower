@@ -22,9 +22,10 @@ class FollowCircle : public Mode {
   void SlightTurnTechnique();
 
   float SmoothenSharpness(float s);
+  void StorePreviousSharpness(float s);
 public:
   FollowCircle() : direction(NULL), number_of_left_turns(NULL), number_of_right_turns(NULL), last_iteration_had_left_turn(false), last_iteration_had_right_turn(false), mario_sound(false),
-    in_turn_sharpness(1.6), slight_turn_technique_sharpness(2.0), out_turn_sharpness(2.3), last_turn_sharpness(2.0), prev_turn_sharpness(2.0), last_turn_change_time(0), smoothing_period(100) {}
+    in_turn_sharpness(1.6), slight_turn_technique_sharpness(2.0), out_turn_sharpness(2.3), last_turn_sharpness(2.0), prev_turn_sharpness(2.0), last_turn_change_time(0), smoothing_period(150) {}
   
   void Init() override;
   void Update() override;

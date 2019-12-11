@@ -57,34 +57,29 @@ void FollowCircle::Update() {
     if (tracker_sensor->IsOnTheLine())
       SlightTurnTechnique();
 
-
-      
     bool turn_needed =  ((l_ && !r) || (!l_ && r));
     if (turn_needed) {
       if (direction == CLOCKWISE) {
         float s = (r ? in_turn_sharpness : out_turn_sharpness);
-        if (last_turn_sharpness != s) {
-          last_turn_change_time = millis();
-
-          prev_turn_sharpness = last_turn_sharpness;
-          last_turn_sharpness = s;
-        }
+        if (last_turn_sharpness != s)
+          StorePreviousSharpness(s);
         drive.Right(false, false, SmoothenSharpness(s));
       }
       else {
         float s = (l_ ? in_turn_sharpness : out_turn_sharpness);
-        if (last_turn_sharpness != s) {
-          last_turn_change_time = millis();
-
-          prev_turn_sharpness = last_turn_sharpness;
-          last_turn_sharpness = s;
-        }
+        if (last_turn_sharpness != s)
+          StorePreviousSharpness(s);
         drive.Left(false, false, SmoothenSharpness(s));
       }
 
-
     }
   }
+}
+
+void FollowCircle::StorePreviousSharpness(float s) {
+  last_turn_change_time = millis();
+  prev_turn_sharpness = last_turn_sharpness;
+  last_turn_sharpness = s;
 }
 
 float FollowCircle::SmoothenSharpness(float s) {
@@ -118,9 +113,7 @@ void FollowCircle::SetDirection(int dir) {
     This way the movement is smooth.  */
 void FollowCircle::SlightTurnTechnique() {
   if (last_turn_sharpness != slight_turn_technique_sharpness) {
-    last_turn_change_time = millis();    
-    prev_turn_sharpness = last_turn_sharpness;
-    last_turn_sharpness = slight_turn_technique_sharpness;
+    StorePreviousSharpness(slight_turn_technique_sharpness);
   }
   if (direction == CLOCKWISE)
     drive.Right(false, false, SmoothenSharpness(slight_turn_technique_sharpness));

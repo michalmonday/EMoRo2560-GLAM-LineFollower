@@ -74,26 +74,6 @@ void FollowRect::Update() {
       turn_direction = CLOCKWISE;
   }
 
-  /*  If the car reached the turning spot then turn and update the information about next turning spot.
-      It also sends diagnostic information through bluetooth, allowing the method to be adjusted.
-      This debugging method allowed to adjust time calculation due to battery voltage level.
-      (which results in higher speed of the car, that is a factor that is currently taken into consideration by the code).  */
-  
-  /*if (reached_end) {
-    drive.Stop();
-    Display::Msg("Sharp turning", "90 degrees.");
-    bool was_line_encountered = drive.Turn(135 * (turn_direction == CLOCKWISE ? 1 : -1), true, rebound_size); // true = stop_at_line
-    Display::Msg("Square track", "following.");
-    
-    side_len = (side_len == long_side_len ? short_side_len : long_side_len);
-    BT_SERIAL.println("side_len = " + String(side_len));
-    
-    AssignEstimatedTravelTime();
-    is_first_turn = is_near_end = reached_end = false;
-    start_time = NULL;
-  }
-  */
-
   if (reached_end) {
 
     Display::Msg("Sharp turning", "90 degrees.");
@@ -115,8 +95,6 @@ void FollowRect::Update() {
       tracker_sensor->GetAll(l_, c, r);
     }
     tone(BUZ_BUILTIN, 200, 200); 
-    
-    
     
     Display::Msg("Square track", "following.");
     
